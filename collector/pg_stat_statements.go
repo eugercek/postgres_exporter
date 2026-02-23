@@ -344,7 +344,7 @@ func (c PGStatStatementsCollector) Update(ctx context.Context, instance *instanc
 
 				queryLabel := "unknown"
 				if statement.Valid {
-					queryLabel = statement.String
+					queryLabel = truncateQuery(statement.String, int(c.statementLength))
 				}
 
 				ch <- prometheus.MustNewConstMetric(
@@ -360,6 +360,26 @@ func (c PGStatStatementsCollector) Update(ctx context.Context, instance *instanc
 		return err
 	}
 	return nil
+}
+
+// truncateQuery truncates a query string so that its length in Prometheus text
+// format does not exceed maxLen characters. Prometheus text format escapes
+// backslash, double-quote, and newline as two-character sequences (\\, \", \n),
+// so those characters each count as 2 toward the limit.
+// See https://github.com/prometheus-community/postgres_exporter/issues/1211
+func truncateQuery(query string, maxLen int) string {
+	count := 0
+	for i, r := range query {
+		runeLen := 1
+		if r == '\\' || r == '"' || r == '\n' {
+			runeLen = 2
+		}
+		if count+runeLen > maxLen {
+			return query[:i]
+		}
+		count += runeLen
+	}
+	return query
 }
 
 func (c PGStatStatementsCollector) buildExclusionClause(identifiers []string, clauseTemplate string) string {

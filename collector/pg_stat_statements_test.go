@@ -548,6 +548,78 @@ func TestPGStatStatementsCollector_PG17_WithStatementAndLimit(t *testing.T) {
 	}
 }
 
+func TestTruncateQuery(t *testing.T) {
+	tests := []struct {
+		name   string
+		query  string
+		maxLen int
+		want   string
+	}{
+		{
+			name:   "short string unchanged",
+			query:  "SELECT 1",
+			maxLen: 100,
+			want:   "SELECT 1",
+		},
+		{
+			name:   "plain ASCII truncation",
+			query:  "SELECT 1 FROM foo",
+			maxLen: 8,
+			want:   "SELECT 1",
+		},
+		{
+			name:   "unicode runes count as 1",
+			query:  "SELECT → FROM foo",
+			maxLen: 10,
+			want:   "SELECT → F",
+		},
+		{
+			name:   "double-quote counts as 2",
+			query:  `SELECT "col" FROM foo`,
+			maxLen: 9,
+			want:   `SELECT "`,
+		},
+		{
+			name:   "backslash counts as 2",
+			query:  `abc\def`,
+			maxLen: 5,
+			want:   `abc\`,
+		},
+		{
+			name:   "newline counts as 2",
+			query:  "abc\ndef",
+			maxLen: 5,
+			want:   "abc\n",
+		},
+		{
+			name:   "query exactly at limit",
+			query:  "SELECT 1",
+			maxLen: 8,
+			want:   "SELECT 1",
+		},
+		{
+			name:   "special chars push truncation earlier",
+			query:  `ab"cde`,
+			maxLen: 4,
+			want:   `ab"`,
+		},
+		{
+			name:   "empty string",
+			query:  "",
+			maxLen: 10,
+			want:   "",
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got := truncateQuery(tc.query, tc.maxLen)
+			if got != tc.want {
+				t.Errorf("truncateQuery(%q, %d) = %q, want %q", tc.query, tc.maxLen, got, tc.want)
+			}
+		})
+	}
+}
+
 func TestPGStatStatementsCollectorWithExcludedDatabases(t *testing.T) {
 	db, mock, err := sqlmock.New()
 	if err != nil {
